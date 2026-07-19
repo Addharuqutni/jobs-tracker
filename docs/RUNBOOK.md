@@ -52,8 +52,9 @@ This previews frontend only. API still requires `npm run dev:api` because no com
 | Check | Endpoint / command | Healthy signal |
 |---|---|---|
 | API process | `GET /api/health` | HTTP 200 and `data.status` equals `ok`. |
-| Scraper runtime | `GET /api/scraper/status` | HTTP 200; inspect `isRunning`, `portals`, `engine`, and `pythonTool`. |
-| Scraper history | `GET /api/scraper/logs?limit=50` | HTTP 200; limit is clamped to 1-100. |
+| Scraper runtime | `GET /api/scraper/status` | HTTP 200; inspect `isRunning`, `queueLength`, `engine`. Note: `portals` is empty — client derives portal status from IndexedDB logs. |
+| Scraper run | `POST /api/scraper/run` | 202 + `{ runId, status, position, queueLength }` or 429 `QUEUE_FULL`. |
+| Scraper run status | `GET /api/scraper/runs/:runId` | HTTP 200; `status` `queued|running|succeeded|failed`; `result` present on terminal. Result TTL 15m. |
 | Frontend | `http://localhost:5173` | Vite page loads and API requests succeed. |
 | Database | `npm run db:migrate` | Migration exits successfully. |
 
@@ -74,9 +75,9 @@ No automated alert channel exists. Operator checks endpoints and process output 
 | `DELETE` | `/api/applications?status=…` | Delete applications in one valid status. |
 | `GET` | `/api/analytics` | Return aggregate analytics, optionally by date range. |
 | `POST` | `/api/export` | Download filtered applications as CSV. |
-| `GET` | `/api/scraper/status` | Report scraper runtime and per-portal status. |
-| `GET` | `/api/scraper/logs` | List persisted scraper logs. |
-| `POST` | `/api/scraper/run` | Trigger asynchronous scrape. |
+| `GET` | `/api/scraper/status` | Queue snapshot; `portals` is empty (client derives from IndexedDB logs). |
+| `POST` | `/api/scraper/run` | Enqueue scrape (202 + runId) or 429 `QUEUE_FULL`. |
+| `GET` | `/api/scraper/runs/:runId` | Poll run status/result (TTL 15m). |
 
 ## Manual scraper operation
 

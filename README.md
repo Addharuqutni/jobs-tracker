@@ -28,11 +28,11 @@ Versi 0.0.1 — personal use, single user, local only.
 
 ## Fitur
 
-- **Multi-source Scraper** — scrape 5 portal job sekaligus dengan adapter pattern. Cheerio untuk SSR, Puppeteer fallback anti-bot.
+- **Multi-source Scraper** — scrape 5 portal job sekaligus dengan adapter pattern. Cheerio untuk SSR, Puppeteer fallback anti-bot. Queue in-memory (`runId`, concurrency=1, max=10).
 - **Deduplikasi 3-layer** — URL match → source+jobId match → weighted fuzzy match (title+company+location ≥90%).
 - **Job Feed Dashboard** — filter (keyword, source, lokasi), pagination, aksi Lamar / Abaikan / Wishlist.
 - **Kanban Tracker** — drag-and-drop board 5 status: wishlist → applied → interview → offered / rejected.
-- **Analytics** — chart agregat (Recharts): distribusi status, tren lamaran, breakdown per source.
+- **Analytics** — chart agregat (Recharts, lazy-loaded): distribusi status, tren lamaran, breakdown per source.
 - **Export CSV** — export lamaran terfilter ke CSV.
 - **Scheduler** — node-cron setiap 6 jam (proses terpisah).
 
@@ -42,11 +42,11 @@ Versi 0.0.1 — personal use, single user, local only.
 |---|---|
 | Frontend | React 18, Vite, Tailwind CSS, React Router |
 | Drag-and-drop | @hello-pangea/dnd |
-| Charts | Recharts |
+| Charts | Recharts (lazy chunk) |
 | Backend | Node.js 20+, Express, TypeScript |
-| Scraper | Cheerio (SSR) + Puppeteer (fallback) |
+| Scraper | Cheerio (SSR) + Puppeteer (fallback), Python sidecar (hybrid, JobStreet/LinkedIn) |
 | Scheduler | node-cron |
-| Database | SQLite (better-sqlite3) + Drizzle ORM |
+| Database | IndexedDB (UI source of truth) + SQLite (server legacy) |
 | Testing | node:test via tsx, c8 coverage |
 
 ## Struktur Proyek
@@ -104,11 +104,13 @@ npm run dev:all
 
 Frontend: http://localhost:5173 — API: http://127.0.0.1:3001
 
-**Scraper scheduler (terminal terpisah):**
+**Scraper scheduler (terminal terpisah, opsional):**
 
 ```bash
 npm run dev:scraper
 ```
+
+> Catatan: UI trigger scrape via `POST /api/scraper/run` (queue). Scheduler cron terpisah hanya untuk mode CLI; cron tidak mengisi client IndexedDB — gunakan trigger manual dari UI untuk mengisi data dashboard.
 
 **Scrape sekali:**
 
@@ -138,19 +140,21 @@ curl http://127.0.0.1:3001/api/health
 | `DELETE` | `/api/applications?status=…` | Hapus lamaran by status |
 | `GET` | `/api/analytics` | Data agregat untuk charts |
 | `POST` | `/api/export` | Export CSV |
-| `GET` | `/api/scraper/status` | Status scraper per portal |
-| `GET` | `/api/scraper/logs` | Riwayat scraper |
-| `POST` | `/api/scraper/run` | Trigger manual scrape |
+| `GET` | `/api/scraper/status` | Snapshot queue (portals kosong, client baca dari IndexedDB) |
+| `POST` | `/api/scraper/run` | Enqueue scrape (202 + runId) atau 429 QUEUE_FULL |
+| `GET` | `/api/scraper/runs/:runId` | Poll status/result run (TTL 15m) |
 
 ## Database
 
-SQLite di `./data/jobs.db`. 3 tabel:
+**Client IndexedDB** (`src/lib/idb.ts`) — source of truth UI. 3 object store:
 
 - **jobs** — lowongan hasil scrape (title, company, location, url, salary, source, job_id, posted_at, hidden)
-- **applications** — lamaran terlacak (job_id FK, status, notes, applied_at)
-- **scraper_logs** — log per scrape run (source, status, error_message, jobs_scraped_count)
+- **applications** — lamaran terlacak (job_id, status, notes, status_updated_at, applied_at)
+- **scraper_logs** — log per scrape run (source, status, error_message, jobs_scraped_count, timestamp)
 
-PRAGMA: `foreign_keys = ON`, `journal_mode = WAL`. Index pada source, hidden, scraped_at, posted_at, url (unique), source+job_id (unique).
+Dedup 3-layer saat ingest: URL match → (source, job_id) match → fuzzy (title+company+location ≥90%).
+
+**Server SQLite** (`./data/jobs.db`) — legacy server-side queries (Drizzle). Scraper queue tidak insert ke SQLite; hasil run dipegang in-memory lalu di-ingest client ke IndexedDB.
 
 Status lamaran: `wishlist` → `applied` → `interview` → `offered` / `rejected`.
 

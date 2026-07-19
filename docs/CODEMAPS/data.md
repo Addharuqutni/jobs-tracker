@@ -1,27 +1,31 @@
-<!-- Generated: 2026-07-16 | Files scanned: ~15 database files | Token estimate: ~570 -->
+<!-- Generated: 2026-07-16 | Updated: 2026-07-19 | Files scanned: ~15 database files | Token estimate: ~570 -->
 # Data Architecture
 
-## SQLite
-[server/db/src/client.ts](../../server/db/src/client.ts) opens `DB_PATH` (default `./data/jobs.db`), enables WAL and foreign keys, then wraps it with Drizzle.
+## Two stores (single-user, local)
+- **Client IndexedDB** (`src/lib/idb.ts`) — source of truth for UI: `jobs`, `applications`, `scraper_logs`.
+- **Server SQLite** ([server/db/src/client.ts](../../server/db/src/client.ts), `./data/jobs.db`) — legacy server-side queries; not written by the scraper queue anymore.
 
+### IndexedDB (UI source of truth)
 ```text
-jobs 1 ─────< applications
-  └──────────── scraper pipeline (no FK)
+jobs ────< applications
+scraper_logs (per source/status/count/timestamp)
 ```
+- `mergeJobs(scraped)`: dedup by URL and `(source, jobId)` before insert.
+- `getPortalStatusFromLogs(sources)`: latest log per source → `ScraperStatus[]` (baseline for dashboard/Header).
+- `getAnalytics(params)`: aggregates over `applications` + `jobs` for analytics page.
+- `exportApplicationsCsv()`: CSV stream from `applications`.
 
-## Tables
-- `jobs`: identity/display fields, `source`, optional `job_id`, URLs, posted/scraped timestamps, `hidden`. Unique partial URL index and `(source, job_id)` index.
-- `applications`: `job_id` FK to jobs with cascade delete, five statuses (`wishlist`, `applied`, `interview`, `offered`, `rejected`), notes/timestamps. One application per job.
-- `scraper_logs`: source, success/error, error message, scraped count, timestamp; indexed by source/time.
+### SQLite (server-side legacy)
+WAL, foreign keys on. Tables: `jobs`, `applications`, `scraper_logs` (schema in `server/db/src/schema.ts`). Queries in `server/db/src/queries/*.ts`. Migration/seed via `npm run db:migrate` / `npm run db:seed`.
 
-## Data access
-- `queries/jobs.ts`: insert, existence/dedup lookups, filtering/pagination, hide/delete.
-- `queries/applications.ts`: tracking, joins, updates/deletes.
-- `queries/scraper.ts`: status/log history.
-- `queries/analytics.ts` + `analytics-calculation.ts`: summaries, funnel, weekly trends, source effectiveness.
+> Note: the scraper queue returns `ScraperRunResult` in memory and does NOT insert into SQLite; the client ingests results into IndexedDB. SQLite remains for the legacy `/api/jobs`, `/api/applications`, `/api/analytics` routes.
+
+## Deduplication
+3-layer in `dedupEngine`: URL match → `(source, jobId)` match → weighted fuzzy (title+company+location ≥90%) via `string-similarity-js`.
 
 ## Migration/seed
-- `migrate.ts`: idempotent table/column/index creation and legacy dedup cleanup.
-- `seed.ts`: five sample jobs, applications, and scraper log; skips when populated.
+- `migrate.ts`: idempotent table/column/index creation (SQLite).
+- `seed.ts`: sample data; skips when populated.
+- IndexedDB schema created lazily in `openDb()` (`idb.ts`); no separate migration.
 
-No auto-delete; CSV export is the backup path. Raw SQL is limited to SQLite migration and aggregate expressions.
+No auto-delete; CSV export is the backup path for applications.

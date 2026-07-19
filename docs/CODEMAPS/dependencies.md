@@ -19,7 +19,7 @@ Native adapters target JobStreet, LinkedIn, Kalibrr, Glints, and Dealls. Public 
 Hybrid scraping optionally spawns runners under `server/scraper/experiments/.venv`; currently supports JobStreet and LinkedIn. `PYTHON_EXECUTABLE` overrides the interpreter.
 
 ## Configuration
-`PORT`, `HOST`, `DB_PATH`, `SCRAPER_CRON`, `SCRAPER_ENGINE`, `SCRAPER_PYTHON_TOOL`, `SCRAPER_PYTHON_TIMEOUT_MS`, `VITE_API_URL`, and AI variables are environment-driven. `.env` is loaded by API config.
+`PORT`, `HOST`, `DB_PATH`, `SCRAPER_CRON`, `SCRAPER_ENGINE`, `SCRAPER_PYTHON_TOOL`, `SCRAPER_PYTHON_TIMEOUT_MS`, `SCRAPER_CONCURRENCY` (default 1), `SCRAPER_QUEUE_MAX` (default 10), `SCRAPER_RESULT_TTL_MS` (default 900000), `SCRAPER_ADAPTER_TIMEOUT_MS` (default 90000), `KALIBRR_PAGINATE` (set `1` to enable Puppeteer pagination), `VITE_API_URL`, and AI variables are environment-driven. `.env` is loaded by API config.
 
 ## Tooling
 TypeScript, tsx, ESLint, Prettier, c8, concurrently. Tests use Node `node:test`; Playwright is optional for E2E.
