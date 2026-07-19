@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #f3f4f6;
+  color: #111827;
+  color-scheme: light;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  scrollbar-color: #111827 #e5e7eb;
+  scrollbar-width: thin;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 86% 4%, rgba(139, 92, 246, 0.16), transparent 26rem),
+    radial-gradient(circle at 4% 92%, rgba(59, 130, 246, 0.13), transparent 24rem),
+    linear-gradient(rgba(17, 24, 39, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.055) 1px, transparent 1px);
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+  background-size:
+    auto,
+    auto,
+    32px 32px,
+    32px 32px;
+  background-attachment: fixed;
+}
+
+::selection {
+  background: #2563eb;
+  color: #fff;
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto flex w-full max-w-7xl flex-col gap-6 pb-8;
+    animation: page-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .page-heading {
+    @apply font-display text-3xl font-normal leading-none tracking-tight text-slate-50 sm:text-4xl;
+  }
+
+  .control-focus {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+
+  .field-control {
+    @apply control-focus min-h-11 rounded-none border-2 border-slate-50 bg-white text-slate-50 shadow-none transition-all placeholder:text-slate-400 hover:border-blue-500 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
+
+/* ponytail: CSS-only animations; JS animation lib if these get complex */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer components {
+  .animate-modal-in {
+    animation: slide-up 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-backdrop-in {
+    animation: fade-in 150ms ease-out both;
+  }
+
+  .animate-toast-in {
+    animation: slide-in-right 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e5e7eb;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #111827;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
