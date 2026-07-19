@@ -5,7 +5,9 @@ import { getUserMessage } from '../lib/errors';
 import { onStorageChanged } from '../lib/storageEvents';
 import { mergeScraperStatus } from '../utils/mergeScraperStatus';
 import { useScraperRun } from './useScraperRun';
-import type { ScraperLogEntry, ScraperStatusResponse } from '../types';
+import type { ScraperLogEntry, ScraperStatus, ScraperStatusResponse } from '../types';
+
+const PORTAL_SOURCES = ['jobstreet', 'linkedin', 'kalibrr', 'glints', 'dealls'];
 
 interface UseScraperDashboardResult {
   status: ScraperStatusResponse | null;
@@ -26,6 +28,7 @@ interface UseScraperDashboardResult {
 export function useScraperDashboard(): UseScraperDashboardResult {
   const [status, setStatus] = useState<ScraperStatusResponse | null>(null);
   const [logs, setLogs] = useState<ScraperLogEntry[]>([]);
+  const [portalStatus, setPortalStatus] = useState<ScraperStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refetchCount, setRefetchCount] = useState(0);
@@ -46,11 +49,16 @@ export function useScraperDashboard(): UseScraperDashboardResult {
     let cancelled = false;
     setLoading(true);
 
-    Promise.all([api.getScraperStatus(), idb.getScraperLogs(20)])
-      .then(([statusData, logsData]) => {
+    Promise.all([
+      api.getScraperStatus(),
+      idb.getScraperLogs(20),
+      idb.getPortalStatusFromLogs(PORTAL_SOURCES),
+    ])
+      .then(([statusData, logsData, portalsData]) => {
         if (cancelled) return;
         setStatus(statusData);
         setLogs(logsData);
+        setPortalStatus(portalsData);
         setError(null);
       })
       .catch((err: unknown) => {
@@ -70,11 +78,18 @@ export function useScraperDashboard(): UseScraperDashboardResult {
     () =>
       onStorageChanged(['logs'], () => {
         void idb.getScraperLogs(20).then(setLogs);
+        void idb.getPortalStatusFromLogs(PORTAL_SOURCES).then(setPortalStatus);
       }),
     [],
   );
 
-  const merged = mergeScraperStatus(status, run, isActive);
+  // ponytail: API /status returns empty portals (no server persistence).
+  // Baseline portals come from IndexedDB logs; live run overlays on top.
+  const baseStatus: ScraperStatusResponse | null = status
+    ? { ...status, portals: portalStatus }
+    : null;
+
+  const merged = mergeScraperStatus(baseStatus, run, isActive);
   const portals = merged?.portals ?? [];
 
   const totalJobsScraped =

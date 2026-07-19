@@ -3,7 +3,6 @@ import { BaseAdapter } from './base';
 import { extractNextData } from '../utils/json-extract';
 import { buildKalibrrUrl } from '../utils/url';
 import { newPage, closePage } from '../utils/puppeteer-pool';
-import { withTimeout } from '../utils/timeout';
 
 interface KalibrrJob {
   id: number;
@@ -55,25 +54,40 @@ export class KalibrrAdapter extends BaseAdapter {
 
     try {
       const url = buildKalibrrUrl(keyword);
+      console.log(`[scraper] kalibrr: native fetch start`);
       const html = await this.fetchHtml(url);
       const parsed = this.parseFixture(html);
+      console.log(`[scraper] kalibrr: SSR jobs=${parsed.length}`);
       if (parsed.length === 0 && this.hasJobData(html)) {
         throw new Error('Kalibrr parser mismatch: __NEXT_DATA__ contains jobs but none parsed');
       }
       add(parsed);
 
-      if (this.config.maxPages > 1) {
+      // ponytail: SSR __NEXT_DATA__ usually has enough jobs; only open Chrome when explicitly enabled
+      // or when SSR returned nothing (page may be JS-rendered).
+      const wantPagination =
+        this.config.maxPages > 1 &&
+        (process.env.KALIBRR_PAGINATE === '1' || allJobs.length === 0);
+
+      if (wantPagination) {
+        console.log(`[scraper] kalibrr: puppeteer pagination start`);
         try {
           add(await this.scrapeWithPuppeteer(url, this.config.maxPages - 1, seen));
         } catch (err) {
+          console.warn(
+            `[scraper] kalibrr: puppeteer pagination failed: ${err instanceof Error ? err.message : err}`,
+          );
           return {
             ...this.success(allJobs),
             status: 'error',
             errorMessage: err instanceof Error ? err.message : 'Kalibrr pagination failed',
           };
         }
+      } else {
+        console.log(`[scraper] kalibrr: skip puppeteer (SSR ok)`);
       }
 
+      console.log(`[scraper] kalibrr: done jobs=${allJobs.length}`);
       return this.success(allJobs);
     } catch (err) {
       return this.error(err instanceof Error ? err.message : 'Unknown error');
@@ -130,10 +144,18 @@ export class KalibrrAdapter extends BaseAdapter {
 
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.config.timeoutMs });
-      await page.waitForSelector('a[href*="/jobs/"]', { timeout: 10000 });
+      await page.waitForSelector('a[href*="/jobs/"]', { timeout: 10_000 });
 
       for (let i = 0; i < additionalPages; i++) {
-        // ponytail: page.evaluate runs in browser context; use string to avoid DOM lib requirement in API
+        // count unique hrefs BEFORE clicking "Load more"
+        const previousCount = (await page.evaluate(() =>
+          new Set(
+            Array.from(document.querySelectorAll('a[href*="/jobs/"]')).map((link) =>
+              link.getAttribute('href'),
+            ),
+          ).size,
+        )) as number;
+
         const loadMoreScript = `(() => {
           const buttons = document.querySelectorAll('button');
           for (const btn of buttons) {
@@ -144,43 +166,41 @@ export class KalibrrAdapter extends BaseAdapter {
           }
           return false;
         })()`;
-        const loadMoreClicked = (await withTimeout(
-          page.evaluate(loadMoreScript),
-          this.config.timeoutMs,
-          'kalibrr.loadMore.evaluate',
-        )) as boolean;
+        const loadMoreClicked = (await page.evaluate(loadMoreScript)) as boolean;
+        if (!loadMoreClicked) {
+          console.log(`[scraper] kalibrr: puppeteer page ${i + 1}/${additionalPages} no more button`);
+          break;
+        }
 
-        if (!loadMoreClicked) break;
+        try {
+          await page.waitForFunction(
+            (count) =>
+              new Set(
+                Array.from(document.querySelectorAll('a[href*="/jobs/"]')).map((link) =>
+                  link.getAttribute('href'),
+                ),
+              ).size > count,
+            { timeout: this.config.timeoutMs },
+            previousCount,
+          );
+        } catch {
+          console.warn(`[scraper] kalibrr: puppeteer page ${i + 1}/${additionalPages} wait timeout`);
+          break;
+        }
 
-        const previousCount = seen.size;
-        await page.waitForFunction(
-          (count) =>
-            new Set(
-              Array.from(document.querySelectorAll('a[href*="/jobs/"]')).map((link) =>
-                link.getAttribute('href'),
-              ),
-            ).size > count,
-          { timeout: this.config.timeoutMs },
-          previousCount,
-        );
-
-        const rendered = await withTimeout(
-          page.evaluate(() =>
-            Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/jobs/"]'))
-              .map((link) => {
-                const match = link.href.match(/\/jobs\/(\d+)\/([^/?#]+)/);
-                const card = link.closest('article') ?? link.parentElement?.parentElement;
-                const text = card?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-                const timeEl = card?.querySelector('time');
-                const postedAt = timeEl?.getAttribute('datetime') ?? null;
-                return match?.[1]
-                  ? { id: match[1], href: link.href, title: link.textContent?.trim() || null, text, postedAt }
-                  : null;
-              })
-              .filter((job): job is NonNullable<typeof job> => job !== null),
-          ),
-          this.config.timeoutMs,
-          'kalibrr.render.evaluate',
+        const rendered = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/jobs/"]'))
+            .map((link) => {
+              const match = link.href.match(/\/jobs\/(\d+)\/([^/?#]+)/);
+              const card = link.closest('article') ?? link.parentElement?.parentElement;
+              const text = card?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+              const timeEl = card?.querySelector('time');
+              const postedAt = timeEl?.getAttribute('datetime') ?? null;
+              return match?.[1]
+                ? { id: match[1], href: link.href, title: link.textContent?.trim() || null, text, postedAt }
+                : null;
+            })
+            .filter((job): job is NonNullable<typeof job> => job !== null),
         );
         let added = 0;
         for (const job of rendered) {
@@ -198,6 +218,9 @@ export class KalibrrAdapter extends BaseAdapter {
           });
           added++;
         }
+        console.log(
+          `[scraper] kalibrr: puppeteer page ${i + 1}/${additionalPages} added=${added}`,
+        );
         if (added === 0) break;
 
         await this.delay();

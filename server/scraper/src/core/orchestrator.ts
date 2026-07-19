@@ -15,7 +15,7 @@ import { GlintsAdapter } from '../adapters/glints.adapter';
 import { DeallsAdapter } from '../adapters/dealls.adapter';
 import { dedupEngine } from './dedup';
 import { closeBrowser } from '../utils/puppeteer-pool';
-import { runPythonSidecar } from '../sidecar/python-sidecar';
+import { runPythonSidecar, PYTHON_SUPPORTED_SOURCES } from '../sidecar/python-sidecar';
 import { TimeoutError, withTimeout } from '../utils/timeout';
 
 interface RunOptions {
@@ -91,7 +91,11 @@ export class Orchestrator {
         for (const [index, keyword] of adapterKeywords.entries()) {
           try {
             let result: AdapterResult;
-            if (engine === 'hybrid') {
+            const useSidecar =
+              engine === 'hybrid' &&
+              PYTHON_SUPPORTED_SOURCES.has(adapter.source as JobSource);
+
+            if (useSidecar) {
               const sidecar = await withTimeout(
                 runPythonSidecar(adapter.source as JobSource, keyword, pythonTool),
                 adapterTimeoutMs,
@@ -108,6 +112,7 @@ export class Orchestrator {
                   adapter.scrape(keyword),
                   adapterTimeoutMs,
                   `${adapter.source} scrape`,
+                  closeBrowser,
                 );
               }
             } else {
@@ -115,6 +120,7 @@ export class Orchestrator {
                 adapter.scrape(keyword),
                 adapterTimeoutMs,
                 `${adapter.source} scrape`,
+                closeBrowser,
               );
             }
 
@@ -138,7 +144,7 @@ export class Orchestrator {
             adapterError = message;
             if (err instanceof TimeoutError) {
               console.error(
-                `[scraper] ${adapter.source} [keyword=${keyword ?? 'default'}] timed out: ${message}`,
+                `[scraper] ${adapter.source} [keyword=${keyword ?? 'default'}] timed out after ${adapterTimeoutMs}ms; browser closed`,
               );
             } else {
               console.error(`[scraper] ${adapter.source} unexpected error: ${message}`);

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import type { AdapterResult, JobSource, PythonScraperTool, ScrapedJob } from '../../../shared/src';
 
-const supportedSources: JobSource[] = ['jobstreet', 'linkedin'];
+export const PYTHON_SUPPORTED_SOURCES: ReadonlySet<JobSource> = new Set(['jobstreet', 'linkedin']);
 const runnerNames: Record<Exclude<PythonScraperTool, 'auto'>, string> = {
   beautifulsoup: 'beautifulsoup_runner.py',
   scrapy: 'scrapy_runner.py',
@@ -32,7 +32,7 @@ export async function runPythonSidecar(
   keyword: string | undefined,
   requestedTool: PythonScraperTool,
 ): Promise<SidecarResult> {
-  if (!supportedSources.includes(source)) {
+  if (!PYTHON_SUPPORTED_SOURCES.has(source)) {
     return {
       result: null,
       tool: null,

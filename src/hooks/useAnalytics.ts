@@ -5,7 +5,9 @@ import { getUserMessage } from '../lib/errors';
 import { onStorageChanged } from '../lib/storageEvents';
 import { mergeScraperStatus } from '../utils/mergeScraperStatus';
 import { useScraperRun } from './useScraperRun';
-import type { AnalyticsData, ScraperStatusResponse } from '../types';
+import type { AnalyticsData, ScraperStatus, ScraperStatusResponse } from '../types';
+
+const PORTAL_SOURCES = ['jobstreet', 'linkedin', 'kalibrr', 'glints', 'dealls'];
 
 interface UseAnalyticsResult {
   data: AnalyticsData | null;
@@ -64,6 +66,7 @@ interface UseScraperStatusResult {
 
 export function useScraperStatus(): UseScraperStatusResult {
   const [status, setStatus] = useState<ScraperStatusResponse | null>(null);
+  const [portalStatus, setPortalStatus] = useState<ScraperStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [refetchCount, setRefetchCount] = useState(0);
   const { run, isActive, start, refetch: refetchRun } = useScraperRun();
@@ -75,10 +78,14 @@ export function useScraperStatus(): UseScraperStatusResult {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getScraperStatus()
-      .then((s) => {
-        if (!cancelled) setStatus(s);
+    Promise.all([
+      api.getScraperStatus(),
+      idb.getPortalStatusFromLogs(PORTAL_SOURCES),
+    ])
+      .then(([s, portals]) => {
+        if (cancelled) return;
+        setStatus(s);
+        setPortalStatus(portals);
       })
       .catch(() => {
         if (!cancelled) setStatus(null);
@@ -91,8 +98,20 @@ export function useScraperStatus(): UseScraperStatusResult {
     };
   }, [refetchCount]);
 
+  useEffect(
+    () => onStorageChanged(['logs'], () => {
+      void idb.getPortalStatusFromLogs(PORTAL_SOURCES).then(setPortalStatus);
+    }),
+    [],
+  );
+
+  // ponytail: API /status returns empty portals; baseline from IndexedDB logs.
+  const baseStatus: ScraperStatusResponse | null = status
+    ? { ...status, portals: portalStatus }
+    : null;
+
   return {
-    status: mergeScraperStatus(status, run, isActive),
+    status: mergeScraperStatus(baseStatus, run, isActive),
     loading,
     isRunning: isActive || (status?.isRunning ?? false),
     isActive,
