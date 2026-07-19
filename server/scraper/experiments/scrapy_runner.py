@@ -5,18 +5,21 @@ import time
 import scrapy
 from scrapy.crawler import CrawlerProcess
 
-from common import USER_AGENT, build_url, emit, ensure_robots_allowed, parse_args
+from common import USER_AGENT, Job, build_url, emit, ensure_robots_allowed, parse_args
 from parsers import parse_html
 
 
 def main() -> None:
     args = parse_args("scrapy")
     started = time.perf_counter()
-    jobs = []
+    jobs: list[Job] = []
     errors: list[str] = []
 
     try:
         ensure_robots_allowed(build_url(args.source, args.keyword, 0), args.timeout)
+    except PermissionError as error:
+        emit("scrapy", args.source, started, jobs, str(error))
+        return
     except Exception as error:
         emit("scrapy", args.source, started, jobs, str(error))
         return
@@ -54,7 +57,9 @@ def main() -> None:
         def on_error(self, failure):
             errors.append(str(failure.value))
 
-    process = CrawlerProcess(settings={"TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor"})
+    process = CrawlerProcess(
+        settings={"TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor"}
+    )
     try:
         process.crawl(BenchmarkSpider)
         process.start()

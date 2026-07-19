@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
+import { onStorageChanged } from '../lib/storageEvents';
+import { mergeScraperStatus } from '../utils/mergeScraperStatus';
 import { useScraperRun } from './useScraperRun';
 import type { AnalyticsData, ScraperStatusResponse } from '../types';
 
@@ -31,7 +34,7 @@ export function useAnalytics(params?: { from?: string; to?: string }): UseAnalyt
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load analytics');
+        setError(getUserMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -42,11 +45,7 @@ export function useAnalytics(params?: { from?: string; to?: string }): UseAnalyt
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally using individual fields
   }, [params?.from, params?.to, refetchCount]);
 
-  useEffect(() => {
-    const onChange = () => refetch();
-    window.addEventListener('jobs-storage-changed', onChange);
-    return () => window.removeEventListener('jobs-storage-changed', onChange);
-  }, [refetch]);
+  useEffect(() => onStorageChanged(['applications'], refetch), [refetch]);
 
   return { data, loading, error, refetch };
 }
@@ -67,12 +66,7 @@ export function useScraperStatus(): UseScraperStatusResult {
   const [status, setStatus] = useState<ScraperStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refetchCount, setRefetchCount] = useState(0);
-  const {
-    run,
-    isActive,
-    start,
-    refetch: refetchRun,
-  } = useScraperRun();
+  const { run, isActive, start, refetch: refetchRun } = useScraperRun();
 
   const refetch = useCallback(() => {
     setRefetchCount((c) => c + 1);
@@ -92,24 +86,13 @@ export function useScraperStatus(): UseScraperStatusResult {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
   }, [refetchCount]);
 
-  const portals = run?.result?.portals ?? status?.portals;
-  const merged: ScraperStatusResponse | null = status
-    ? {
-        ...status,
-        portals: portals ?? status.portals,
-        isRunning: status.isRunning || isActive,
-        lastRun: run?.result ?? status.lastRun,
-      }
-    : null;
-
   return {
-    status: merged,
+    status: mergeScraperStatus(status, run, isActive),
     loading,
     isRunning: isActive || (status?.isRunning ?? false),
     isActive,

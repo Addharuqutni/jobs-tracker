@@ -4,6 +4,7 @@ import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import type { Application, ApplicationStatus } from '../types';
 import { KANBAN_COLUMN_ORDER, STATUS_LABELS } from '../constants';
 import { useApplications } from '../hooks/useApplications';
+import { getUserMessage } from '../lib/errors';
 import { useToast } from '../components/ui/Toast';
 import { KanbanColumn } from '../components/tracker/KanbanColumn';
 import { JobDetailModal } from '../components/tracker/JobDetailModal';
@@ -63,7 +64,7 @@ export function TrackerPage() {
       await updateStatus(appId, newStatus);
       show(`Moved to ${newStatus}`);
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to update status', 'error');
+      show(getUserMessage(err), 'error');
       refetch();
     }
   }
@@ -73,7 +74,7 @@ export function TrackerPage() {
       await deleteApplication(id);
       show('Application deleted');
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to delete', 'error');
+      show(getUserMessage(err), 'error');
     }
   }
 
@@ -87,7 +88,7 @@ export function TrackerPage() {
       );
       setBulkDeleteStatus(null);
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to delete', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setBulkDeleting(false);
     }

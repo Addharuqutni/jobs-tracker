@@ -1,10 +1,20 @@
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import multer from 'multer';
-import type { CvReviewMode, Job, JobSource } from '../../../shared/src';
+import {
+  AiError,
+  AiUnavailableError,
+  ParseError,
+  ValidationError,
+  type CvReviewMode,
+  type Job,
+  type JobSource,
+} from '../../../shared/src';
 import { chatJson, isAiConfigured } from '../lib/ai-client';
 import { CV_MAX_BYTES, isSupportedCvMime, parseCv } from '../lib/cv-parser';
 import { buildCvReviewMessages, parseCvReviewResponse } from '../lib/cv-review-prompt';
+import { asyncHandler } from '../middleware/error-handler';
+import { sendError } from '../lib/http-error';
 
 export const cvRouter = Router();
 
@@ -19,8 +29,9 @@ const upload = multer({
 const uploadCv: RequestHandler = (req, res, next) => {
   upload.single('cv')(req, res, (err: unknown) => {
     if (err instanceof multer.MulterError) {
-      const message = err.code === 'LIMIT_FILE_SIZE' ? 'CV file exceeds the 5MB limit.' : 'Invalid file upload.';
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message } });
+      const message =
+        err.code === 'LIMIT_FILE_SIZE' ? 'CV file exceeds the 5MB limit.' : 'Invalid file upload.';
+      sendError(res, new ValidationError(message));
       return;
     }
     if (err) {
@@ -61,17 +72,17 @@ function parseJobPayload(raw: unknown): Job | null {
   };
 }
 
-cvRouter.post('/cv/review', uploadCv, (req, res) => {
-  void (async () => {
+cvRouter.post(
+  '/cv/review',
+  uploadCv,
+  asyncHandler(async (req, res) => {
     if (!isAiConfigured()) {
-      res.status(503).json({ success: false, error: { code: 'AI_UNAVAILABLE', message: 'AI provider is not configured. Set AI_API_KEY.' } });
-      return;
+      throw new AiUnavailableError();
     }
 
     const file = req.file;
     if (!file) {
-      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'CV file is required (PDF, DOCX, or TXT, max 5MB).' } });
-      return;
+      throw new ValidationError('CV file is required (PDF, DOCX, or TXT, max 5MB).');
     }
 
     let mode: CvReviewMode = 'general';
@@ -80,8 +91,7 @@ cvRouter.post('/cv/review', uploadCv, (req, res) => {
     if (rawJob !== undefined && rawJob !== '') {
       job = parseJobPayload(rawJob);
       if (!job) {
-        res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'job must be a valid job JSON object.' } });
-        return;
+        throw new ValidationError('job must be a valid job JSON object.');
       }
       mode = 'match';
     }
@@ -90,8 +100,7 @@ cvRouter.post('/cv/review', uploadCv, (req, res) => {
     try {
       cvText = await parseCv(file.buffer, file.mimetype);
     } catch (error) {
-      res.status(400).json({ success: false, error: { code: 'PARSE_ERROR', message: error instanceof Error ? error.message : 'Failed to parse CV.' } });
-      return;
+      throw new ParseError(error instanceof Error ? error.message : 'Failed to parse CV.');
     }
 
     try {
@@ -99,7 +108,7 @@ cvRouter.post('/cv/review', uploadCv, (req, res) => {
       const review = parseCvReviewResponse(raw, mode, job);
       res.json({ success: true, data: review });
     } catch (error) {
-      res.status(502).json({ success: false, error: { code: 'AI_ERROR', message: error instanceof Error ? error.message : 'AI review failed.' } });
+      throw new AiError(error instanceof Error ? error.message : 'AI review failed.');
     }
-  })();
-});
+  }),
+);

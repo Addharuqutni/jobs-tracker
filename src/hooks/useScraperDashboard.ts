@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
+import { onStorageChanged } from '../lib/storageEvents';
+import { mergeScraperStatus } from '../utils/mergeScraperStatus';
 import { useScraperRun } from './useScraperRun';
-import type { ScraperLogEntry, ScraperStatus, ScraperStatusResponse } from '../types';
+import type { ScraperLogEntry, ScraperStatusResponse } from '../types';
 
 interface UseScraperDashboardResult {
   status: ScraperStatusResponse | null;
@@ -52,7 +55,7 @@ export function useScraperDashboard(): UseScraperDashboardResult {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load scraper data');
+        setError(getUserMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,28 +66,19 @@ export function useScraperDashboard(): UseScraperDashboardResult {
     };
   }, [refetchCount]);
 
-  useEffect(() => {
-    const onChange = () => {
-      void idb.getScraperLogs(20).then(setLogs);
-    };
-    window.addEventListener('jobs-storage-changed', onChange);
-    return () => window.removeEventListener('jobs-storage-changed', onChange);
-  }, []);
+  useEffect(
+    () =>
+      onStorageChanged(['logs'], () => {
+        void idb.getScraperLogs(20).then(setLogs);
+      }),
+    [],
+  );
 
-  const portals: ScraperStatus[] = run?.result?.portals ?? status?.portals ?? [];
-
-  const mergedStatus: ScraperStatusResponse | null = status
-    ? {
-        ...status,
-        portals,
-        isRunning: status.isRunning || isActive,
-        lastRun: run?.result ?? status.lastRun,
-      }
-    : null;
+  const merged = mergeScraperStatus(status, run, isActive);
+  const portals = merged?.portals ?? [];
 
   const totalJobsScraped =
-    portals.reduce((sum, p) => sum + (p.jobsScraped ?? 0), 0) ||
-    (run?.result?.jobs.length ?? 0);
+    portals.reduce((sum, p) => sum + (p.jobsScraped ?? 0), 0) || (run?.result?.jobs.length ?? 0);
 
   const lastRunTime =
     run?.finishedAt ??
@@ -95,7 +89,7 @@ export function useScraperDashboard(): UseScraperDashboardResult {
     null;
 
   return {
-    status: mergedStatus,
+    status: merged,
     logs,
     totalJobsScraped,
     lastRunTime,

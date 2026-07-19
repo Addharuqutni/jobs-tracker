@@ -6,16 +6,18 @@ import re
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.robotparser import RobotFileParser
-
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/126.0.0.0 Safari/537.36"
 )
+
+SourceName = str  # "jobstreet" | "linkedin"
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,10 @@ def parse_args(tool: str) -> argparse.Namespace:
 
 
 def ensure_robots_allowed(url: str, timeout: int) -> None:
+    """Raise PermissionError when robots.txt explicitly disallows the URL.
+
+    Unreachable robots.txt (network/HTTP errors) is treated as allow-all (RFC 9309).
+    """
     parts = urlsplit(url)
     robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
     parser = RobotFileParser()
@@ -51,14 +57,13 @@ def ensure_robots_allowed(url: str, timeout: int) -> None:
         request = Request(robots_url, headers={"User-Agent": USER_AGENT})
         with urlopen(request, timeout=timeout) as response:
             parser.parse(response.read().decode("utf-8", errors="replace").splitlines())
-    except Exception:
-        # RFC 9309: unreachable robots.txt (403/404/500/timeout) = allow all
+    except (HTTPError, URLError, TimeoutError, OSError):
         return
     if not parser.can_fetch(USER_AGENT, url):
         raise PermissionError(f"robots.txt disallows {url}")
 
 
-def build_url(source: str, keyword: str, page: int) -> str:
+def build_url(source: SourceName, keyword: str, page: int) -> str:
     if source == "jobstreet":
         slug = quote(keyword.strip().lower().replace(" ", "-"), safe="-")
         return f"https://id.jobstreet.com/id/{slug}-jobs?page={page + 1}"
@@ -91,14 +96,17 @@ def valid_jobs(jobs: Iterable[Job]) -> list[Job]:
     return result
 
 
-def emit(tool: str, source: str, started: float, jobs: Iterable[Job], error: str | None = None) -> None:
+def emit(
+    tool: str,
+    source: str,
+    started: float,
+    jobs: Iterable[Job],
+    error: str | None = None,
+) -> None:
     valid = valid_jobs(jobs)
     fields = ("title", "company", "location", "url", "jobId", "postedAt")
     complete = sum(
-        1
-        for job in valid
-        for field in fields
-        if getattr(job, field) not in (None, "")
+        1 for job in valid for field in fields if getattr(job, field) not in (None, "")
     )
     denominator = len(valid) * len(fields)
     payload: dict[str, Any] = {

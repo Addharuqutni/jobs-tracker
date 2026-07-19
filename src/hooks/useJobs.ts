@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
+import { onStorageChanged } from '../lib/storageEvents';
 import type { Job, Pagination } from '../types';
 
 interface UseJobsParams {
@@ -41,7 +43,7 @@ export function useJobs(params: UseJobsParams): UseJobsResult {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load jobs');
+        setError(getUserMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -52,11 +54,7 @@ export function useJobs(params: UseJobsParams): UseJobsResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally using individual fields not the object
   }, [params.keyword, params.location, params.source, params.page, params.pageSize, params.sort, refetchCount]);
 
-  useEffect(() => {
-    const onChange = () => refetch();
-    window.addEventListener('jobs-storage-changed', onChange);
-    return () => window.removeEventListener('jobs-storage-changed', onChange);
-  }, [refetch]);
+  useEffect(() => onStorageChanged(['jobs'], refetch), [refetch]);
 
   return { jobs, pagination, loading, error, refetch };
 }

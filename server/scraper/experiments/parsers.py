@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import re
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from common import Job, canonical_linkedin_url, clean
 
 
 def parse_html(source: str, html: str) -> list[Job]:
-    return parse_jobstreet(html) if source == "jobstreet" else parse_linkedin(html)
+    if source == "jobstreet":
+        return parse_jobstreet(html)
+    return parse_linkedin(html)
+
+
+def _text(node: Tag | None) -> str | None:
+    return clean(node.get_text(" ") if node else None)
 
 
 def parse_jobstreet(html: str) -> list[Job]:
@@ -21,19 +27,26 @@ def parse_jobstreet(html: str) -> list[Job]:
         salary = card.select_one('[data-automation="jobSalary"] span')
         job_id = card.get("data-job-id")
         href = title.get("href") if title else None
-        url = f"https://id.jobstreet.com{href}" if href and href.startswith("/") else href
+        href_str = str(href) if href else None
+        url = (
+            f"https://id.jobstreet.com{href_str}"
+            if href_str and href_str.startswith("/")
+            else href_str
+        )
         time_tag = card.select_one("time")
         posted_at = time_tag.get("datetime") if time_tag else None
-        jobs.append(Job(
-            title=clean(title.get_text(" ") if title else None),
-            company=clean(company.get_text(" ") if company else None),
-            location=clean(location.get_text(" ") if location else None),
-            url=url,
-            salary=clean(salary.get_text(" ") if salary else None),
-            source="jobstreet",
-            jobId=str(job_id) if job_id else None,
-            postedAt=posted_at,
-        ))
+        jobs.append(
+            Job(
+                title=_text(title),
+                company=_text(company),
+                location=_text(location),
+                url=url,
+                salary=_text(salary),
+                source="jobstreet",
+                jobId=str(job_id) if job_id else None,
+                postedAt=str(posted_at) if posted_at else None,
+            )
+        )
     return jobs
 
 
@@ -52,14 +65,16 @@ def parse_linkedin(html: str) -> list[Job]:
         match = re.search(r"urn:li:jobPosting:(\d+)", str(urn))
         job_id = match.group(1) if match else None
         href = href_node.get("href") if href_node else None
-        jobs.append(Job(
-            title=clean(title.get_text(" ") if title else None),
-            company=clean(company.get_text(" ") if company else None),
-            location=clean(location.get_text(" ") if location else None),
-            url=canonical_linkedin_url(job_id, str(href) if href else None),
-            salary=None,
-            source="linkedin",
-            jobId=job_id,
-            postedAt=posted_at,
-        ))
+        jobs.append(
+            Job(
+                title=_text(title),
+                company=_text(company),
+                location=_text(location),
+                url=canonical_linkedin_url(job_id, str(href) if href else None),
+                salary=None,
+                source="linkedin",
+                jobId=job_id,
+                postedAt=str(posted_at) if posted_at else None,
+            )
+        )
     return jobs

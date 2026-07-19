@@ -1,20 +1,69 @@
+import { lazy, Suspense } from 'react';
 import { Download, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useToast } from '../components/ui/Toast';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
 import { formatRate } from '../utils/format';
 import { StatCard } from '../components/charts/StatCard';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingCard, EmptyState, ErrorState } from '../components/ui/States';
-import {
-  StatusBarChart,
-  SourcePieChart,
-  WeeklyTrendLineChart,
-  SourceEffectivenessTable,
-  ApplicationFunnel,
-} from '../components/charts/Charts';
+import type { AnalyticsData } from '../types';
+
+// one chunk for all recharts widgets
+const ChartsSection = lazy(async () => {
+  const m = await import('../components/charts/Charts');
+  return {
+    default: function ChartsSection({ data }: { data: AnalyticsData }) {
+      return (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <Card className="lg:col-span-5">
+              <h3 className="mb-4 text-sm font-semibold text-slate-300">Current Pipeline</h3>
+              <m.StatusBarChart data={data} />
+            </Card>
+            <Card className="lg:col-span-7">
+              <h3 className="mb-6 text-sm font-semibold text-slate-300">Application Funnel</h3>
+              <m.ApplicationFunnel data={data} />
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <Card className="lg:col-span-5">
+              <h3 className="mb-4 text-sm font-semibold text-slate-300">Applications by Source</h3>
+              <m.SourcePieChart data={data} />
+            </Card>
+            <Card className="lg:col-span-7">
+              <h3 className="mb-4 text-sm font-semibold text-slate-300">Weekly Application Trend</h3>
+              <m.WeeklyTrendLineChart data={data} />
+            </Card>
+          </div>
+
+          <Card>
+            <h3 className="mb-4 text-sm font-semibold text-slate-300">Source Effectiveness</h3>
+            <m.SourceEffectivenessTable data={data} />
+          </Card>
+        </>
+      );
+    },
+  };
+});
+
+function ChartsFallback() {
+  return (
+    <div className="space-y-4" role="status" aria-busy="true">
+      <span className="sr-only">Loading charts</span>
+      <div className="h-64">
+        <LoadingCard />
+      </div>
+      <div className="h-64">
+        <LoadingCard />
+      </div>
+    </div>
+  );
+}
 
 export function AnalyticsPage() {
   const navigate = useNavigate();
@@ -32,7 +81,7 @@ export function AnalyticsPage() {
       URL.revokeObjectURL(url);
       show('Export downloaded');
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Export failed', 'error');
+      show(getUserMessage(err), 'error');
     }
   }
 
@@ -125,32 +174,9 @@ export function AnalyticsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card className="lg:col-span-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-300">Current Pipeline</h3>
-          <StatusBarChart data={data} />
-        </Card>
-        <Card className="lg:col-span-7">
-          <h3 className="mb-6 text-sm font-semibold text-slate-300">Application Funnel</h3>
-          <ApplicationFunnel data={data} />
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card className="lg:col-span-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-300">Applications by Source</h3>
-          <SourcePieChart data={data} />
-        </Card>
-        <Card className="lg:col-span-7">
-          <h3 className="mb-4 text-sm font-semibold text-slate-300">Weekly Application Trend</h3>
-          <WeeklyTrendLineChart data={data} />
-        </Card>
-      </div>
-
-      <Card>
-        <h3 className="mb-4 text-sm font-semibold text-slate-300">Source Effectiveness</h3>
-        <SourceEffectivenessTable data={data} />
-      </Card>
+      <Suspense fallback={<ChartsFallback />}>
+        <ChartsSection data={data} />
+      </Suspense>
     </div>
   );
 }

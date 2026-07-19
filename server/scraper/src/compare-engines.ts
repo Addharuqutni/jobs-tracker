@@ -174,8 +174,10 @@ async function runPython(
 function parseKeyword(): string {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--keyword' && args[i + 1]) return args[i + 1];
-    if (args[i]?.startsWith('--keyword=')) return args[i].slice(10);
+    const arg = args[i];
+    if (!arg) continue;
+    if (arg === '--keyword' && args[i + 1]) return args[i + 1] as string;
+    if (arg.startsWith('--keyword=')) return arg.slice(10);
   }
   return 'react developer';
 }

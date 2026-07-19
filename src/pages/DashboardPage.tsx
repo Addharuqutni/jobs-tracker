@@ -4,6 +4,7 @@ import { useScraperDashboard } from '../hooks/useScraperDashboard';
 import { useScraperKeywords } from '../hooks/useScraperKeywords';
 import { useScraperSources } from '../hooks/useScraperSources';
 import { useScraperEngine } from '../hooks/useScraperEngine';
+import { getUserMessage } from '../lib/errors';
 import { useToast } from '../components/ui/Toast';
 import { StatCard } from '../components/charts/StatCard';
 import { Card } from '../components/ui/Card';
@@ -61,7 +62,7 @@ export function DashboardPage() {
       }
       refetch();
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to queue scraper', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setTriggering(false);
     }

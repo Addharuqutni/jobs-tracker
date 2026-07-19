@@ -6,6 +6,7 @@ import { useScraperKeywords } from '../hooks/useScraperKeywords';
 import { useScraperSources } from '../hooks/useScraperSources';
 import { useScraperEngine } from '../hooks/useScraperEngine';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
 import { useScraperRun } from '../hooks/useScraperRun';
 import { useToast } from '../components/ui/Toast';
 import { JobFilter } from '../components/job/JobFilter';
@@ -53,7 +54,7 @@ export function FeedPage() {
         show('Moved to Applied');
         refetch();
       } catch (err) {
-        show(err instanceof Error ? err.message : 'Failed to track job', 'error');
+        show(getUserMessage(err), 'error');
       }
     },
     [show, refetch],
@@ -66,7 +67,7 @@ export function FeedPage() {
         show('Added to Wishlist');
         refetch();
       } catch (err) {
-        show(err instanceof Error ? err.message : 'Failed to track job', 'error');
+        show(getUserMessage(err), 'error');
       }
     },
     [show, refetch],
@@ -85,14 +86,12 @@ export function FeedPage() {
                 show('Job restored');
                 refetch();
               })
-              .catch((err: unknown) =>
-                show(err instanceof Error ? err.message : 'Failed to restore job', 'error'),
-              );
+              .catch((err: unknown) => show(getUserMessage(err), 'error'));
           },
         });
         refetch();
       } catch (err) {
-        show(err instanceof Error ? err.message : 'Failed to hide job', 'error');
+        show(getUserMessage(err), 'error');
       }
     },
     [show, refetch],
@@ -113,7 +112,7 @@ export function FeedPage() {
         show('Scraper started');
       }
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to queue scraper', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setTriggering(false);
     }
@@ -127,7 +126,7 @@ export function FeedPage() {
       setDeleteOpen(false);
       refetch();
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to delete jobs', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setDeleting(false);
     }

@@ -1,5 +1,6 @@
 import type { ScraperLastRun } from '../types';
 import { addScraperLogs, mergeJobs } from './idb';
+import { notifyStorageChanged } from './storageEvents';
 
 const KEY = 'scraper-last-ingested-run';
 const ACTIVE_KEY = 'scraper-active-run-id';
@@ -59,6 +60,6 @@ export async function ingestRunResult(
   await addScraperLogs(result.logs ?? []);
   setLastIngestedRunId(runId);
   setActiveRunId(null);
-  window.dispatchEvent(new Event('jobs-storage-changed'));
+  notifyStorageChanged(['jobs', 'logs']);
   return true;
 }

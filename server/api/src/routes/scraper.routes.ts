@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { enqueueScraperRun, getQueueSnapshot, getScraperRun } from '../../../scraper/src/runtime';
-import { SOURCES } from '../../../shared/src';
-import type { PythonScraperTool, ScraperEngine, ScraperStatus } from '../../../shared/src';
+import {
+  NotFoundError,
+  QueueFullError,
+  SOURCES,
+  ValidationError,
+  type PythonScraperTool,
+  type ScraperEngine,
+  type ScraperStatus,
+} from '../../../shared/src';
+import { asyncHandler } from '../middleware/error-handler';
+import { sendError } from '../lib/http-error';
 
 export const scraperRouter = Router();
 
@@ -36,97 +45,108 @@ scraperRouter.get('/scraper/status', (_req, res) => {
   });
 });
 
-scraperRouter.get('/scraper/runs/:runId', (req, res) => {
-  const runId = req.params.runId;
-  if (!runId || typeof runId !== 'string' || runId.length > 80) {
-    res.status(400).json({
-      success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid runId' },
-    });
-    return;
-  }
+scraperRouter.get(
+  '/scraper/runs/:runId',
+  asyncHandler(async (req, res) => {
+    const runId = req.params.runId;
+    if (!runId || typeof runId !== 'string' || runId.length > 80) {
+      throw new ValidationError('Invalid runId');
+    }
 
-  const job = getScraperRun(runId);
-  if (!job) {
-    res.status(404).json({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Scraper run not found or expired' },
-    });
-    return;
-  }
+    const job = getScraperRun(runId);
+    if (!job) {
+      throw new NotFoundError('Scraper run', runId);
+    }
 
-  res.json({
-    success: true,
-    data: {
-      runId: job.runId,
-      status: job.status,
-      position: job.position,
-      queueLength: job.queueLength,
-      createdAt: job.createdAt,
-      startedAt: job.startedAt,
-      finishedAt: job.finishedAt,
-      errorMessage: job.errorMessage,
-      result: job.result,
-    },
-  });
-});
+    res.json({
+      success: true,
+      data: {
+        runId: job.runId,
+        status: job.status,
+        position: job.position,
+        queueLength: job.queueLength,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        finishedAt: job.finishedAt,
+        errorMessage: job.errorMessage,
+        result: job.result,
+      },
+    });
+  }),
+);
 
 scraperRouter.post('/scraper/run', (req, res) => {
   const body: unknown = req.body ?? {};
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Body must be an object' } });
+    sendError(res, new ValidationError('Body must be an object'));
     return;
   }
 
   const input = body as Record<string, unknown>;
   const source = typeof input.source === 'string' ? input.source : undefined;
-  const sources = Array.isArray(input.sources) && input.sources.every((item) => typeof item === 'string')
-    ? input.sources
-    : undefined;
-  const keywords = Array.isArray(input.keywords) && input.keywords.every((item) => typeof item === 'string')
-    ? input.keywords
-    : undefined;
-  const engine = input.engine === 'native' || input.engine === 'hybrid'
-    ? input.engine as ScraperEngine
-    : undefined;
-  const pythonTools: PythonScraperTool[] = ['auto', 'beautifulsoup', 'scrapy', 'selenium', 'playwright'];
-  const pythonTool = typeof input.pythonTool === 'string' && pythonTools.includes(input.pythonTool as PythonScraperTool)
-    ? input.pythonTool as PythonScraperTool
-    : undefined;
+  const sources =
+    Array.isArray(input.sources) && input.sources.every((item) => typeof item === 'string')
+      ? input.sources
+      : undefined;
+  const keywords =
+    Array.isArray(input.keywords) && input.keywords.every((item) => typeof item === 'string')
+      ? input.keywords
+      : undefined;
+  const engine =
+    input.engine === 'native' || input.engine === 'hybrid'
+      ? (input.engine as ScraperEngine)
+      : undefined;
+  const pythonTools: PythonScraperTool[] = [
+    'auto',
+    'beautifulsoup',
+    'scrapy',
+    'selenium',
+    'playwright',
+  ];
+  const pythonTool =
+    typeof input.pythonTool === 'string' &&
+    pythonTools.includes(input.pythonTool as PythonScraperTool)
+      ? (input.pythonTool as PythonScraperTool)
+      : undefined;
 
   if (input.sources !== undefined && !sources) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'sources must be a string array' } });
+    sendError(res, new ValidationError('sources must be a string array'));
     return;
   }
   if (input.source !== undefined && !source) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'source must be a string' } });
+    sendError(res, new ValidationError('source must be a string'));
     return;
   }
   if (input.keywords !== undefined && !keywords) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'keywords must be a string array' } });
+    sendError(res, new ValidationError('keywords must be a string array'));
     return;
   }
   if (input.engine !== undefined && !engine) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'engine must be native or hybrid' } });
+    sendError(res, new ValidationError('engine must be native or hybrid'));
     return;
   }
   if (input.pythonTool !== undefined && !pythonTool) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown Python scraper tool' } });
+    sendError(res, new ValidationError('Unknown Python scraper tool'));
     return;
   }
 
-  const finalSources = sources && sources.length > 0
-    ? sources
-    : source
-      ? [source]
-      : undefined;
+  const finalSources =
+    sources && sources.length > 0 ? sources : source ? [source] : undefined;
 
   if (finalSources?.some((item) => !SOURCES.includes(item as (typeof SOURCES)[number]))) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown scraper source' } });
+    sendError(res, new ValidationError('Unknown scraper source'));
     return;
   }
-  if (keywords && (keywords.length === 0 || keywords.length > 20 || keywords.some((item) => item.trim().length === 0 || item.length > 100))) {
-    res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Provide 1-20 non-empty keywords, maximum 100 characters each' } });
+  if (
+    keywords &&
+    (keywords.length === 0 ||
+      keywords.length > 20 ||
+      keywords.some((item) => item.trim().length === 0 || item.length > 100))
+  ) {
+    sendError(
+      res,
+      new ValidationError('Provide 1-20 non-empty keywords, maximum 100 characters each'),
+    );
     return;
   }
 
@@ -138,13 +158,7 @@ scraperRouter.post('/scraper/run', (req, res) => {
   });
 
   if ('error' in enqueued) {
-    res.status(429).json({
-      success: false,
-      error: {
-        code: 'QUEUE_FULL',
-        message: `Scraper queue is full (${enqueued.queueLength} waiting). Try again later.`,
-      },
-    });
+    sendError(res, new QueueFullError(enqueued.queueLength));
     return;
   }
 

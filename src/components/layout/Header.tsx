@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Activity, Menu, Play, Settings } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useScraperStatus } from '../../hooks/useAnalytics';
+import { getUserMessage } from '../../lib/errors';
 import { getScraperIndicator } from '../../utils/scraper-indicator';
 import { useToast } from '../ui/Toast';
 import { Modal } from '../ui/Modal';
@@ -45,7 +46,7 @@ export function Header({ onMenuOpen }: HeaderProps) {
       }
       refetch();
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to queue scraper', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setTriggering(false);
     }

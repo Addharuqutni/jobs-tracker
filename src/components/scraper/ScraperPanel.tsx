@@ -5,6 +5,7 @@ import { useScraperKeywords } from '../../hooks/useScraperKeywords';
 import { useScraperSources } from '../../hooks/useScraperSources';
 import { useScraperEngine } from '../../hooks/useScraperEngine';
 import { useScraperStatus } from '../../hooks/useAnalytics';
+import { getUserMessage } from '../../lib/errors';
 import { getScraperIndicator } from '../../utils/scraper-indicator';
 import { useToast } from '../ui/Toast';
 import { KeywordInput } from './KeywordInput';
@@ -53,7 +54,7 @@ export function ScraperPanel({ onRunComplete }: ScraperPanelProps) {
       refetch();
       onRunComplete?.();
     } catch (err) {
-      show(err instanceof Error ? err.message : 'Failed to queue scraper', 'error');
+      show(getUserMessage(err), 'error');
     } finally {
       setTriggering(false);
     }

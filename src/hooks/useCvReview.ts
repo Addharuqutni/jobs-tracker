@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { api } from '../lib/api';
+import { getUserMessage } from '../lib/errors';
 import * as idb from '../lib/idb';
 import type { CvReview } from '../types';
 
@@ -19,7 +20,7 @@ export function useCvReview() {
       const result = await api.reviewCv(file, job);
       setState({ loading: false, error: null, review: result });
     } catch (error) {
-      setState({ loading: false, error: error instanceof Error ? error.message : 'CV review failed', review: null });
+      setState({ loading: false, error: getUserMessage(error), review: null });
     }
   }, []);
 

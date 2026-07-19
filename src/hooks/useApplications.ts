@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as idb from '../lib/idb';
+import { getUserMessage } from '../lib/errors';
+import { onStorageChanged } from '../lib/storageEvents';
 import type { Application, ApplicationStatus } from '../types';
 
 interface UseApplicationsResult {
@@ -39,7 +41,7 @@ export function useApplications(params?: {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load applications');
+        setError(getUserMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -77,11 +79,7 @@ export function useApplications(params?: {
     return result.deleted;
   }, []);
 
-  useEffect(() => {
-    const onChange = () => refetch();
-    window.addEventListener('jobs-storage-changed', onChange);
-    return () => window.removeEventListener('jobs-storage-changed', onChange);
-  }, [refetch]);
+  useEffect(() => onStorageChanged(['applications'], refetch), [refetch]);
 
   return { applications, loading, error, refetch, updateStatus, updateNotes, deleteApplication, deleteByStatus };
 }
