@@ -17,6 +17,7 @@
     "test:coverage": "c8 --check-coverage --per-file --statements=35 --branches=35 --functions=35 --lines=35 --reporter=text --reporter=html --reporter=lcov --include=server/api/src/lib/validation.ts --include=server/db/src/queries/analytics-calculation.ts --include=server/scraper/src/adapters/*.ts --include=server/scraper/src/core/dedup.ts --include=server/scraper/src/sidecar/python-sidecar.ts --include=server/scraper/src/utils/json-extract.ts --include=server/scraper/src/utils/url.ts npm test",
     "scrape": "tsx server/scraper/src/index.ts",
     "scrape:once": "tsx server/scraper/src/index.ts --once",
+    "diagnose": "tsx server/scraper/src/diagnose.ts",
     "scrape:experiment": "server\\scraper\\experiments\\.venv\\Scripts\\python.exe server\\scraper\\experiments\\benchmark.py",
     "scrape:experiment:jobstreet": "npm run scrape:experiment -- --source jobstreet --keyword \"react developer\" --pages 1 --runs 1",
     "scrape:experiment:linkedin": "npm run scrape:experiment -- --source linkedin --keyword \"react developer\" --pages 1 --runs 1",

@@ -141,11 +141,6 @@ export function FeedPage() {
           </p>
           <h1 className="page-heading">
             Job Feed
-            {pagination && (
-              <span className="ml-2 text-sm font-normal text-slate-400">
-                {pagination.total} jobs
-              </span>
-            )}
           </h1>
         </div>
         <div className="flex items-center gap-2">
